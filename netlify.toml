@@ -2,6 +2,7 @@
   from = "/api/*"
   to = "http://167.99.148.111:5011/api/:splat"
   status = 200
+  force = true
 
 [[redirects]]
   from = "/*"
