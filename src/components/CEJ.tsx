@@ -149,47 +149,6 @@ export default function CEJ() {
 
 
   /**
-   * Descarga en CSV los datos de Automatizacion1.
-   */
-  const handleDescargarCSV = () => {
-    if (!resultados) return;
-
-    // Aseguramos que sea un array de IResultadoExpediente
-    const expedientes = resultados.Automatizacion;
-    if (!Array.isArray(expedientes) || expedientes.length === 0) {
-      return;
-    }
-
-    // Cabeceras del CSV
-    const cabeceras = ['Codigo', 'Fecha', 'Sumilla'];
-
-    // Convertir a formato CSV (forma sencilla manual)
-    const lineas = [cabeceras.join(',')]; // Primera línea con cabeceras
-    expedientes.forEach((exp) => {
-      const fila = [
-        exp.codigo,
-        exp.fecha || '',
-        exp.sumilla ? exp.sumilla.replace(/(\r\n|\n|\r)/g, ' ') : '', 
-        // reemp. saltos de línea si quieres
-      ];
-      lineas.push(fila.join(','));
-    });
-
-    const csvContent = lineas.join('\n');
-
-    // Generar y descargar el archivo
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'Automatizacion1.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-
-  /**
    * Renderiza una tabla dada la lista de expedientes (cada uno con codigo, fecha, sumilla, etc.)
    */
   const renderTabla = (titulo: string, expedientes: IResultadoExpediente[] | unknown) => {
