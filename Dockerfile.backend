@@ -1,0 +1,18 @@
+# Imagen base
+FROM node:18
+
+# Configurar el directorio de trabajo
+WORKDIR /app
+
+# Copiar los archivos del backend
+COPY package*.json ./
+COPY server.js ./
+
+# Instalar dependencias
+RUN npm install
+
+# Exponer el puerto del backend
+EXPOSE 3001
+
+# Comando para iniciar el backend
+CMD ["node", "server.js"]

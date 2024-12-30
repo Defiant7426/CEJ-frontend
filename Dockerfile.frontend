@@ -1,0 +1,22 @@
+# Imagen base
+FROM node:18
+
+# Configurar el directorio de trabajo
+WORKDIR /app
+
+# Copiar los archivos del frontend
+COPY package*.json ./
+COPY vite.config.ts ./
+COPY tsconfig.json ./
+COPY tsconfig.node.json ./
+COPY src ./src
+COPY public ./public
+
+# Instalar dependencias
+RUN npm install
+
+# Exponer el puerto del frontend
+EXPOSE 5173
+
+# Comando para iniciar Vite
+CMD ["npm", "run", "dev", "--", "--host"]
