@@ -2,6 +2,8 @@
   from = "/api/*"
   to = "http://143.198.35.3:5011/api/:splat"
   status = 200
+  force = true
+  timeout = 240000
 
 [[redirects]]
   from = "/*"
