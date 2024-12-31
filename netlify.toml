@@ -1,9 +1,7 @@
 [[redirects]]
   from = "/api/*"
-  to = "http://167.99.148.111:5011/api/:splat"
+  to = "http://143.198.35.3:5011/api/:splat"
   status = 200
-  force = true
-  timeout = 1800
 
 [[redirects]]
   from = "/*"
