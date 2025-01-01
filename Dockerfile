@@ -21,10 +21,10 @@ WORKDIR /app
 RUN npm install -g serve
 
 # Copia la carpeta de build generada en la etapa anterior
-COPY --from=build /app/build ./build
+COPY --from=build /app/dist ./dist
 
 # Expone el puerto 3000 (o el que prefieras)
 EXPOSE 3000
 
 # Comando de arranque
-CMD ["serve", "-s", "build", "-l", "3000"]
+CMD ["serve", "-s", "dist", "-l", "3000"]

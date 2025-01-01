@@ -9,36 +9,40 @@ interface IResultadoExpediente {
   codigo: string;
   fecha: string | null;
   sumilla: string | null;
-  // Si más adelante quieres un "nombre", puedes agregarlo aquí
 }
-
-interface ICSVRow {
-    EXPEDIENTE?: string;
-    // Agrega más campos según las columnas de tu CSV
-  }
 
 /**
  * Interfaz para la respuesta de la API
  */
 interface IRespuestaAPI {
-  Automatizacion: IResultadoExpediente[] | unknown;
-  //Automatizacion2: IResultadoExpediente[] | unknown;
-  //Automatizacion3: IResultadoExpediente[] | unknown;
+  Automatizacion: IResultadoExpediente[]; 
+  // Si tu backend devuelve más propiedades, agrégalas aquí
+}
+
+interface ICSVRow {
+  EXPEDIENTE?: string;
+  // Agrega más campos según las columnas de tu CSV si fuese necesario
 }
 
 export default function CEJ() {
   // Estado que guarda el archivo CSV seleccionado
   const [csvFile, setCsvFile] = useState<File | null>(null);
 
-  // Estado para el "cargando..."
+  // Estado para controlar si se está haciendo algún request
   const [isLoading, setIsLoading] = useState(false);
 
-  // Estado donde guardamos el resultado que viene de la API
-  const [resultados, setResultados] = useState<IRespuestaAPI | null>(null);
+  // Estado donde guardamos TODOS los resultados (sumatoria de lotes)
+  const [resultados, setResultados] = useState<IResultadoExpediente[]>([]);
+
+  // Estado para indicar si ya se procesaron todos los códigos
+  const [completed, setCompleted] = useState(false);
 
   // Maneja el evento de selección del archivo
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setResultados(null); // Limpiar resultados previos si hay
+    // Al seleccionar un nuevo archivo, limpiamos resultados
+    setResultados([]);
+    setCompleted(false);
+
     const file = e.target.files?.[0] || null;
     if (file && file.type === 'text/csv') {
       setCsvFile(file);
@@ -48,96 +52,105 @@ export default function CEJ() {
     }
   };
 
-  // Al hacer clic en "Revisar", parsear CSV, enviar al backend
+  /**
+   * Esta función divide un array en chunks (subarrays) de un tamaño dado.
+   */
+  const chunkArray = <T,>(array: T[], size: number): T[][] => {
+    const chunkedArr: T[][] = [];
+    let index = 0;
+    while (index < array.length) {
+      chunkedArr.push(array.slice(index, index + size));
+      index += size;
+    }
+    return chunkedArr;
+  };
+
+  // Al hacer clic en "Revisar", parsear CSV, dividir en lotes y enviar al backend
   const handleRevisar = async () => {
     if (!csvFile) return;
+
     setIsLoading(true);
+    setCompleted(false);
 
     // 1. Parsear el archivo CSV
     const text = await csvFile.text();
-    const parsed = Papa.parse<ICSVRow>(text, { header: true }); 
+    const parsed = Papa.parse<ICSVRow>(text, { header: true });
 
-    const codigos: string[] = [];
+    // 2. Extraemos los códigos
+    const todosLosCodigos: string[] = [];
     if (Array.isArray(parsed.data)) {
       parsed.data.forEach((row: ICSVRow) => {
-        // Ajusta el nombre de la columna según tu CSV
         if (row.EXPEDIENTE) {
-          codigos.push(row.EXPEDIENTE.trim());
+          todosLosCodigos.push(row.EXPEDIENTE.trim());
         }
       });
     }
 
-    // 2. Generar el JSON que se enviará al backend
-    const bodyToSend = {
-      codigos
-    };
+    // 3. Dividimos el array de códigos en lotes de 3
+    const chunks = chunkArray(todosLosCodigos, 3);
 
-    console.log('Enviando al backend:', bodyToSend);
+    // 4. Para almacenar resultados acumulados de todos los lotes
+    const resultadosAcumulados: IResultadoExpediente[] = [];
 
-    try {
-      // 3. Enviar al endpoint
-      const res = await fetch('/api/expedientes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bodyToSend),
-      });
+    // 5. Procesamos cada chunk de manera secuencial
+    for (const chunk of chunks) {
+      const bodyToSend = { codigos: chunk };
 
-      if (!res.ok) {
-        throw new Error('Error en la respuesta del servidor');
+      try {
+        // Llamada a la API con el chunk de 3 códigos
+        const res = await fetch('http://143.198.35.3:5011/api/expedientes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyToSend),
+        });
+
+        if (!res.ok) {
+          throw new Error('Error en la respuesta del servidor');
+        }
+
+        // Convertimos la respuesta a JSON
+        const data: IRespuestaAPI = await res.json();
+
+        // Si la API te devuelve "Automatizacion" como array de expedientes
+        if (Array.isArray(data.Automatizacion)) {
+          resultadosAcumulados.push(...data.Automatizacion);
+        }
+
+        // (Opcional) Si quieres ir mostrando resultados a medida que llegan:
+        // setResultados([...resultadosAcumulados]);
+      } catch (error) {
+        console.error('Error enviando/recibiendo datos:', error);
       }
-
-      // 4. Obtener la respuesta como JSON
-      const data: IRespuestaAPI = await res.json();
-      setResultados(data);
-    } catch (error) {
-      console.error('Error enviando/recibiendo datos:', error);
-      // Podrías mostrar algún mensaje de error al usuario si gustas
-      setResultados(null);
-    } finally {
-      setIsLoading(false);
     }
+
+    // 6. Cuando terminamos de procesar TODOS los chunks, guardamos todo en el state
+    setResultados(resultadosAcumulados);
+    setIsLoading(false);
+    setCompleted(true); // Marcamos que ya se completó
   };
 
   /**
-   * Descarga un archivo XLSX con los datos de Automatizacion1.
+   * Descarga un archivo XLSX con los datos de todos los expedientes acumulados.
    */
   const handleDescargarXLSX = () => {
-    if (!resultados) return;
+    if (!resultados || resultados.length === 0) return;
 
-    const expedientes = resultados.Automatizacion;
-    if (!Array.isArray(expedientes) || expedientes.length === 0) {
-      return;
-    }
-
-    // 1. Preparamos un array de objetos, con la forma que deseamos mostrar en Excel
-    //    Por ejemplo, { Codigo, Fecha, Sumilla }.
-    //    Opcionalmente, podrías añadir una columna Nombre si tuvieras ese dato.
-    const dataParaExcel = expedientes.map((exp) => ({
+    const dataParaExcel = resultados.map((exp) => ({
       Codigo: exp.codigo,
       Fecha: exp.fecha || '',
       Sumilla: exp.sumilla || '',
     }));
 
-    // 2. Crear un "worksheet" (hoja de trabajo) a partir de este array
     const hoja = XLSX.utils.json_to_sheet(dataParaExcel);
-
-    // 3. Crear un "workbook" (libro)
     const libro = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(libro, hoja, 'Resultado');
-
-    // 4. Generar el binario en formato Excel
-    //    El "write" te devuelve un arraybuffer o base64. En React, solemos usar "write" con 'array'
     const excelBuffer = XLSX.write(libro, {
       bookType: 'xlsx',
       type: 'array',
-      // Para soportar mejor acentos y caracteres especiales
       cellDates: true,
     });
 
-    // 5. Crear un blob a partir de ese ArrayBuffer
     const blob = new Blob([excelBuffer], { type: 'application/octet-stream' });
-
-    // 6. Forzar la descarga del archivo
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -147,19 +160,17 @@ export default function CEJ() {
     document.body.removeChild(link);
   };
 
-
   /**
-   * Renderiza una tabla dada la lista de expedientes (cada uno con codigo, fecha, sumilla, etc.)
+   * Renderiza una tabla con la lista de expedientes (cada uno con codigo, fecha, sumilla, etc.)
    */
-  const renderTabla = (titulo: string, expedientes: IResultadoExpediente[] | unknown) => {
-    if (!Array.isArray(expedientes) || expedientes.length === 0) {
-      // Si no es un array o está vacío, no renderizamos nada
+  const renderTabla = (expedientes: IResultadoExpediente[]) => {
+    if (!expedientes || expedientes.length === 0) {
       return null;
     }
 
     return (
       <div className="mt-8">
-        <h2 className="text-xl font-semibold mb-2">{titulo}</h2>
+        <h2 className="text-xl font-semibold mb-2">Resultado</h2>
         <div className="overflow-x-auto">
           <table className="min-w-full bg-white border border-gray-300">
             <thead>
@@ -173,7 +184,6 @@ export default function CEJ() {
             <tbody>
               {expedientes.map((item, idx) => (
                 <tr key={idx} className="hover:bg-gray-50">
-                  {/* Nombre lo dejaremos vacío por ahora o tomado del CSV si se requiere más adelante */}
                   <td className="py-2 px-4 border-b"></td>
                   <td className="py-2 px-4 border-b">{item.codigo}</td>
                   <td className="py-2 px-4 border-b">{item.fecha || ''}</td>
@@ -213,7 +223,6 @@ export default function CEJ() {
       ) : (
         <div className="w-64 bg-blue-200 flex items-center justify-between px-4 py-2 mb-4">
           <div className="flex items-center space-x-2">
-            {/* Ícono o texto */}
             <span className="text-blue-700 font-bold text-lg">&#128196;</span>
             <p className="text-gray-700">{csvFile.name}</p>
           </div>
@@ -224,40 +233,37 @@ export default function CEJ() {
               className="hidden"
               onChange={handleFileChange}
             />
-            {/* Ícono/Texto que indique que se puede reemplazar el archivo */}
             <span className="text-xs text-blue-900 underline">Cambiar</span>
           </label>
         </div>
       )}
 
-    <div className="flex items-center space-x-4">
+      {/* Botones de acción */}
+      <div className="flex items-center space-x-4">
+        {/* Botón Revisar */}
+        <button
+          onClick={handleRevisar}
+          disabled={!csvFile}
+          className={`
+            px-6 py-2 rounded 
+            ${
+              csvFile
+                ? 'bg-red-400 hover:bg-red-500 text-white'
+                : 'bg-red-200 text-gray-400 cursor-not-allowed'
+            }
+          `}
+        >
+          Revisar
+        </button>
 
-      {/* Botón Revisar */}
-      <button
-        onClick={handleRevisar}
-        disabled={!csvFile}
-        className={`
-          px-6 py-2 rounded 
-          ${csvFile ? 'bg-red-400 hover:bg-red-500 text-white' : 'bg-red-200 text-gray-400 cursor-not-allowed'}
-        `}
-      >
-        Revisar
-      </button>
-
-      {/* Botón Descargar CSV */}
-      <button
+        {/* Botón Descargar XLSX */}
+        <button
           onClick={handleDescargarXLSX}
-          disabled={
-            !resultados ||
-            !Array.isArray(resultados.Automatizacion) ||
-            resultados.Automatizacion.length === 0
-          }
+          disabled={resultados.length === 0}
           className={`
             px-6 py-2 rounded
             ${
-              resultados &&
-              Array.isArray(resultados.Automatizacion) &&
-              resultados.Automatizacion.length > 0
+              resultados.length > 0
                 ? 'bg-green-400 hover:bg-green-500 text-white'
                 : 'bg-green-200 text-gray-400 cursor-not-allowed'
             }
@@ -265,19 +271,20 @@ export default function CEJ() {
         >
           Descargar XLSX
         </button>
-        </div>
+      </div>
 
       {/* Mensaje de "Cargando..." */}
       {isLoading && (
         <div className="mt-4 text-lg font-semibold">Cargando...</div>
       )}
 
-      {/* Resultados */}
-      {resultados && !isLoading && (
-        <div className="w-full mt-8">
-          {renderTabla('Resultado', resultados.Automatizacion)}
-          {/* {renderTabla('Automatización 2', resultados.Automatizacion2)}
-          {renderTabla('Automatización 3', resultados.Automatizacion3)} */}
+      {/* Tabla de resultados */}
+      {!isLoading && resultados && renderTabla(resultados)}
+
+      {/* Mensaje de completado */}
+      {completed && (
+        <div className="mt-4 text-green-600 font-bold text-lg">
+          ¡Completado!
         </div>
       )}
     </div>
