@@ -65,6 +65,28 @@ export default function CEJ() {
     return chunkedArr;
   };
 
+  function parseDate(fechaStr: string): Date {
+    // Separar fecha y hora (si la hay)
+    const [soloFecha, soloHora] = fechaStr.split(' '); // ["DD/MM/YYYY", "HH:mm"] o solo ["DD/MM/YYYY"]
+  
+    const [dia, mes, anio] = soloFecha.split('/'); 
+    // Recuerda que los meses en JS van de 0 a 11, por eso (Number(mes) - 1)
+  
+    if (soloHora) {
+      const [horas, minutos] = soloHora.split(':');
+      return new Date(
+        Number(anio),
+        Number(mes) - 1,
+        Number(dia),
+        Number(horas),
+        Number(minutos)
+      );
+    } else {
+      // Solo teníamos "DD/MM/YYYY"
+      return new Date(Number(anio), Number(mes) - 1, Number(dia));
+    }
+  }
+
   // Al hacer clic en "Revisar", parsear CSV, dividir en lotes y enviar al backend
   const handleRevisar = async () => {
     if (!csvFile) return;
@@ -85,6 +107,8 @@ export default function CEJ() {
         }
       });
     }
+
+    console.log('Códigos a revisar:', todosLosCodigos);
 
     // 3. Dividimos el array de códigos en lotes de 3
     const chunks = chunkArray(todosLosCodigos, 3);
@@ -122,6 +146,13 @@ export default function CEJ() {
         console.error('Error enviando/recibiendo datos:', error);
       }
     }
+
+    resultadosAcumulados.sort((a, b) => {
+      const dateA = a.fecha ? parseDate(a.fecha).getTime() : 0;
+      const dateB = b.fecha ? parseDate(b.fecha).getTime() : 0;
+      // Para obtener de la más reciente a la más antigua
+      return dateB - dateA;
+    });
 
     // 6. Cuando terminamos de procesar TODOS los chunks, guardamos todo en el state
     setResultados(resultadosAcumulados);
@@ -243,11 +274,11 @@ export default function CEJ() {
         {/* Botón Revisar */}
         <button
           onClick={handleRevisar}
-          disabled={!csvFile}
+          disabled={!csvFile || isLoading}
           className={`
             px-6 py-2 rounded 
             ${
-              csvFile
+              csvFile || isLoading
                 ? 'bg-red-400 hover:bg-red-500 text-white'
                 : 'bg-red-200 text-gray-400 cursor-not-allowed'
             }
